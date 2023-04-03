@@ -137,15 +137,6 @@ a:active {
   text-decoration: none;
 }
 
-.errore {
-  font-family: "Söhne", "Arial", sans-serif;
-  display: flex;
-  color: #EF4444;
-  font-size: 1.4rem;
-  line-height: 1.5rem;
-  gap: .5rem;
-}
-
 .summary-box__content.hidden {
   display: none;
 }

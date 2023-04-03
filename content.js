@@ -23,6 +23,7 @@ if (isDarkTheme) {
   root.style.setProperty('--subgroup-header-container-backgroundcolor', lightTheme.subgroupHeaderBackground);
   root.style.setProperty('--subgroup-summary-container-backgroundcolor', lightTheme.subgroupSummaryBackground);
 }
+
 const API_KEY = 'YOUR API KEY';
 
 let MAX_RESULTS = 100;
@@ -76,41 +77,90 @@ async function setNumberOfComments() {
 }
 
 async function printComments() {
-  all_comments = "";
-  firstTimestamp = null;
-  lastTimestamp = null;
+  const comments = [];
+  let previousTimestamp = null;
 
   if (!(numberOfComments > 0)) {
     return [];
   }
 
-  ytb_data = await getComments();
+  const all_comments = [];
 
-  if (!ytb_data.items) {
-    return [];
+  while (true) {
+    const ytbData = await getComments();
+
+    if (!ytbData.items) {
+      break;
+    }
+
+    all_comments.push(...ytbData.items);
+
+    if (ytbData.nextPageToken) {
+      pageToken = ytbData.nextPageToken;
+      multipleChunk = true;
+    } else {
+      break;
+    }
   }
-  for (const comment of ytb_data.items) {
+
+   // Reverse the array to get comments from oldest to newest
+  all_comments.reverse();
+
+  for (const comment of all_comments) {
+    const currentTimestamp = comment.snippet.topLevelComment.snippet.publishedAt;
+
     if (comment.snippet.topLevelComment.snippet.textOriginal.length < 1150) {
-      all_comments += (comment.snippet.topLevelComment.snippet.textOriginal) + "\n";
+      // Check if previousTimestamp is not null and if the current timestamp is less than the previous timestamp
+      if (new Date(currentTimestamp) >= new Date(previousTimestamp)) {
+        comments.push({
+          text: comment.snippet.topLevelComment.snippet.textOriginal,
+          timestamp: comment.snippet.topLevelComment.snippet.publishedAt
+        });
+      }
     }
-    if (lastTimestamp == null) {
-      lastTimestamp = comment.snippet.topLevelComment.snippet.publishedAt;
-    }
-    firstTimestamp = comment.snippet.topLevelComment.snippet.publishedAt;
+
+    previousTimestamp = currentTimestamp;
   }
 
-  if (all_comments.length > 14850) {
-    MAX_RESULTS = MAX_RESULTS - 10;
-    return await printComments();
+  // Concatenate comments into chunks not greater than 13000 characters
+  let commentChunks = [];
+  let currentChunk = "";
+  let currentChunkTimestamps = { first: null, last: null };
+  let chunkTimestamps = [];
+
+  for (let i = 0; i < comments.length; i++) {
+    const comment = comments[i].text;
+    const timestamp = comments[i].timestamp;
+
+    if (currentChunk.length + comment.length + 1 <= 13000) {
+      currentChunk += comment + "\n";
+
+      if (!currentChunkTimestamps.first) {
+        currentChunkTimestamps.first = timestamp;
+      }
+      currentChunkTimestamps.last = timestamp;
+    } else {
+      commentChunks.push(currentChunk);
+      chunkTimestamps.push({ ...currentChunkTimestamps });
+      currentChunk = comment + "\n";
+      currentChunkTimestamps.first = null;
+      currentChunkTimestamps.last = null;
+    }
   }
 
-  return { content: all_comments, timestamps: { first: firstTimestamp, last: lastTimestamp } };
+  if (currentChunk) {
+    commentChunks.push(currentChunk);
+    chunkTimestamps.push({ ...currentChunkTimestamps });
+  }
+
+  return { content: commentChunks, timestamps: chunkTimestamps };
 }
+
 
 let content;
 let timestamps;
 
-let ytb_data;
+let multipleChunk = false;
 
 let container;
 let summaryBox1;
@@ -223,7 +273,7 @@ async function start() {
 
   finalSummary.innerHTML = "Please wait while your comments are being processed. This may take a few moments, but it will ensure the best possible results for your summaries.";
 
-  if (ytb_data.nextPageToken) {
+  if (multipleChunk === true) {
     summaryBox1.style.display = "block";
     processNextSummary();
   } else {
@@ -234,16 +284,17 @@ async function start() {
 
 function processSingleSummary() {
 
-  if (content.length > 0) {
+  if (content.length < 2) {
 
     buffer = finalSummary;
-    port.postMessage({ type: "processSingleSummary", content });
+    const rawComments = content.shift();
+    port.postMessage({ type: "processSingleSummary", rawComments });
 
   }
 }
 
 async function processNextSummary() {
-  if (ytb_data.nextPageToken) {
+  if (content.length > 0) {
 
     const subgroup_container = document.createElement('div');
     subgroup_container.className = 'subgroup_container';
@@ -277,14 +328,13 @@ async function processNextSummary() {
 
     summaryBoxContent1.appendChild(subgroup_container);
 
-    const { content, timestamps } = await printComments();
+    const commentsInterval = timestamps.shift();
 
-    summary_header.innerHTML = 'Summarize comments from ' + getReadableTimestamp(timestamps.first) + ' to ' + getReadableTimestamp(timestamps.last);
+    summary_header.innerHTML = 'Summarize comments from ' + getReadableTimestamp(commentsInterval.first) + ' to ' + getReadableTimestamp(commentsInterval.last);
     buffer = summary1;
+    const rawComments = content.shift();
 
-    port.postMessage({ type: "processingBlocks", content });
-
-    pageToken = ytb_data.nextPageToken;
+    port.postMessage({ type: "processingBlocks", rawComments });
 
   } else {
 
@@ -325,7 +375,8 @@ function createPort() {
         waitForLogin();
 
       } else {
-        buffer.innerHTML = '<p class="errore">' + msg.error + '</p>';
+        buffer.innerHTML = msg.error;
+        buffer.style.color = '#EF4444';
       }
     }
 
@@ -647,5 +698,5 @@ function getReadableTimestamp(timestamp) {
   const minute = dateObject.getMinutes();
 
   // Format the timestamp as a string in the desired format
-  return `${day} ${month} ${year}`;
+  return `${day} ${month} ${year}, ${hour}:${minute.toString().padStart(2, '0')}`;
 }

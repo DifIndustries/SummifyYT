@@ -65,10 +65,10 @@ chrome.runtime.onConnect.addListener((port) => {
         await isAuthorized(port);
         break;
       case "processSingleSummary":
-        await processSingleSummary(port, request.content);
+        await processSingleSummary(port, request.rawComments);
         break;
       case "processingBlocks":
-        await processBlockOfComments(port, request.content);
+        await processBlockOfComments(port, request.rawComments);
         break;
       case "final":
         await generateFinalSummary(port, request.content);
@@ -91,19 +91,8 @@ async function processBlockOfComments(port, content) {
   let conversationId;
 
   try {
-      
-    let detecting = await chrome.i18n.detectLanguage(content);
-    let lang = speakLanguage2(detecting.languages[0].language)
 
-    try {
-      let result = await readLocalStorage('language');
-      // Use the result
-      if (result !== undefined && result !== 'Default') {
-        lang = result;
-      }
-    } catch (error) {
-      // key not found
-    }
+    let lang = await getLanguage(content);
 
     let prompt = "Summarize in " + lang + " the main takeaways from these comments below the video, including any notable trends or patterns:";
 
@@ -150,7 +139,7 @@ const readLocalStorage = async (key) => {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get([key], function (result) {
       if (result[key] === undefined) {
-        reject();
+        reject(new Error(`Key not found in local storage: ${key}`));
       } else {
         resolve(result[key]);
       }
@@ -161,21 +150,8 @@ const readLocalStorage = async (key) => {
 async function processSingleSummary(port, content) {
 
   try {
-    
-    let detecting = await chrome.i18n.detectLanguage(content);
-    let lang = speakLanguage2(detecting.languages[0].language)
 
-    let conversationId;
-
-    try {
-      let result = await readLocalStorage('language');
-      // Use the result
-      if (result !== undefined && result !== 'Default') {
-        lang = result;
-      }
-    } catch (error) {
-      // key not found
-    }
+    let lang = await getLanguage(content);
 
     let prompt = "Please provide an overall summary in " + lang + " of the main takeaways and notable trends or patterns discussed in the comments below the video:";
     const gptQuestion = prompt + `\n\n${content}`;
@@ -218,20 +194,7 @@ async function processSingleSummary(port, content) {
 async function generateFinalSummary(port, content) {
   try {
       
-    let detecting = await chrome.i18n.detectLanguage(content);
-    let lang = speakLanguage2(detecting.languages[0].language)
-
-    let conversationId;
-
-    try {
-      let result = await readLocalStorage('language');
-      // Use the result
-      if (result !== undefined && result !== 'Default') {
-        lang = result;
-      }
-    } catch (error) {
-      // key not found
-    }
+    let lang = await getLanguage(content);
 
     let prompt = "Please provide an overall summary in " + lang + " of the main takeaways and notable trends or patterns discussed in the summaries of the comments below the video:";
 
@@ -271,6 +234,33 @@ async function generateFinalSummary(port, content) {
     }
     
   }
+}
+
+async function getLanguage(content) {
+  let lang;
+
+  try {    
+    let result = await readLocalStorage('language').catch((error) => {
+      if (error.message.includes("Key not found")) {
+        console.log("Key not found in local storage, using default language");
+        return undefined;
+      } else {
+        throw error;
+      }
+    });
+
+    let detecting = await chrome.i18n.detectLanguage(content);
+    lang = speakLanguage2(detecting.languages[0].language);
+
+    if (result !== undefined && result !== 'Default') {
+      lang = result;
+    }
+
+  } catch (error) {
+    console.log("An error occurred:", error);
+  }
+
+  return lang;
 }
 
 async function getAccessToken() {
@@ -352,7 +342,6 @@ async function setConversationLanguage(question, callback) {
 
 
 async function deleteConversations() {
-  console.log("checking map__________________________________-");
   if (conversationIds.size === 0) {
     clearInterval(interval);
     return;
@@ -445,7 +434,7 @@ async function fetchSSE(resource, options) {
     const text = await resp.text();
     const json = JSON.parse(text);
     console.log("Fetch failed with status code: " + resp.status);
-    throw new Error(json.detail);
+    throw new Error(json.detail.message);
   }
   const parser = createParser((event) => {
     if (event.type === "event") {
