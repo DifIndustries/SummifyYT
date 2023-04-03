@@ -299,38 +299,25 @@ async function processNextSummary() {
     const subgroup_container = document.createElement('div');
     subgroup_container.className = 'subgroup_container';
 
-    const subgroup_header_container = document.createElement('div');
-    subgroup_header_container.className = 'subgroup_header_container';
-
-    const userProfilePic = document.createElement("img");
-    userProfilePic.src = chrome.runtime.getURL("images/userPic.png");
-
-    const summary_header = document.createElement('p');
-    summary_header.className = 'pre-summary-text';
-
-    subgroup_header_container.appendChild(userProfilePic);
-    subgroup_header_container.appendChild(summary_header);
+    const summary_header = document.createElement('div');
+    summary_header.className = 'chunk-header';
 
     const subgroup_summary_n_container = document.createElement('div');
     subgroup_summary_n_container.className = 'subgroup_summary_n_container';
 
-    const gptProfilePic = document.createElement("img");
-    gptProfilePic.src = chrome.runtime.getURL("images/chatGptPic.png");
-
     const summary1 = document.createElement('p');
     summary1.className = 'summary-text';
 
-    subgroup_summary_n_container.appendChild(gptProfilePic);
     subgroup_summary_n_container.appendChild(summary1);
 
-    subgroup_container.appendChild(subgroup_header_container);
+    subgroup_container.appendChild(summary_header);
     subgroup_container.appendChild(subgroup_summary_n_container);
 
     summaryBoxContent1.appendChild(subgroup_container);
 
     const commentsInterval = timestamps.shift();
 
-    summary_header.innerHTML = 'Summarize comments from ' + getReadableTimestamp(commentsInterval.first) + ' to ' + getReadableTimestamp(commentsInterval.last);
+    summary_header.innerHTML = '<mark>' + commentsInterval.count + ' comments</mark> <span><mark>from ' + getReadableTimestamp(commentsInterval.first) + ' to ' + getReadableTimestamp(commentsInterval.last) + '</mark></span>';
     buffer = summary1;
     const rawComments = content.shift();
 
@@ -395,9 +382,110 @@ function toggleMenu() {
   hamburger.classList.toggle('active');
   const menu = document.querySelector('.navbar__menu');
   menu.classList.toggle('slide-down');
+  const final_summary_header = document.getElementById("final-summary-header");
+  // Toggle the innerHTML of final_summary_header.
+  if (final_summary_header.innerHTML == 'Settings') {
+    final_summary_header.innerHTML = 'Summary of comments';
+  } else {
+    final_summary_header.innerHTML = 'Settings';
+  }
 }
 
 function createHTML() {
+
+  // Create the first summary box
+  summaryBox1 = document.createElement('div');
+  summaryBox1.className = 'summary-box';
+  summaryBox1.style.display = "none";
+
+  const summaryBoxHeader1 = document.createElement('div');
+  summaryBoxHeader1.className = 'summary-box__header';
+
+  processingGif.id = "processingPic";
+  processingGif.src = chrome.runtime.getURL("images/processingPic.gif");
+  summaryBoxHeader1.appendChild(processingGif);
+
+  const preprocessingLabel = document.createElement('p');
+  preprocessingLabel.id = 'preprocessingLabel';
+  preprocessingLabel.innerHTML = "Reading " + numberOfComments + " comments";
+  summaryBoxHeader1.appendChild(preprocessingLabel);
+
+  const toggleButton = document.createElement('button');
+  toggleButton.innerHTML = 'Show more';
+  toggleButton.classList.add('summary-header-button');
+
+  let contentExpanded = false;
+  // Toggle the summaryBoxContent1 element when the summaryBox1 element is clicked, unless the toggle button was clicked
+  summaryBox1.addEventListener('click', function (event) {
+    if (event.target !== toggleButton && !contentExpanded) {
+      summaryBoxContent1.classList.toggle('hidden');
+      contentExpanded = true;
+
+      // Update the toggle button text based on the expanded/collapsed state of the box
+      if (summaryBoxContent1.classList.contains('hidden')) {
+        toggleButton.textContent = 'Show more';
+        summaryBox1.classList.remove('expanded');
+      } else {
+        toggleButton.textContent = 'Show less';
+        summaryBox1.classList.add('expanded');
+      }
+    }
+  });
+
+  toggleButton.addEventListener('click', function () {
+    if (summaryBoxContent1.classList.contains('hidden')) {
+      summaryBoxContent1.classList.remove('hidden');
+      contentExpanded = true;
+      summaryBox1.classList.add('expanded');
+      toggleButton.textContent = 'Show less';
+      summaryBox1.appendChild(toggleButton);
+      toggleButton.style.marginLeft = '0px';
+      toggleButton.style.marginBottom = '0px';
+    } else {
+      summaryBoxContent1.classList.add('hidden');
+      contentExpanded = false;
+      summaryBox1.classList.remove('expanded');
+      toggleButton.textContent = 'Show more';
+      summaryBoxHeader1.appendChild(toggleButton);
+      toggleButton.style.marginLeft = '10px';
+      toggleButton.style.marginBottom = '0px';
+    }
+  });
+
+  summaryBoxHeader1.appendChild(toggleButton);
+
+  summaryBoxContent1 = document.createElement('div');
+  summaryBoxContent1.className = 'summary-box__content hidden';
+
+  summaryBox1.appendChild(summaryBoxHeader1);
+  summaryBox1.appendChild(summaryBoxContent1);
+
+  const separator = document.createElement('hr');
+  separator.className = 'main-separator';
+
+  // Create the second summary box
+  summaryBox2 = document.createElement('div');
+  summaryBox2.className = 'summary-box-2';
+
+  summaryBoxContent2 = document.createElement('div');
+  summaryBoxContent2.className = 'summary-box__content';
+
+  const summaryBoxHeader2 = document.createElement('div');
+  summaryBoxHeader2.className = 'summary-box__header';
+
+  const summary_header = document.createElement('p');
+  summary_header.id = 'final-summary-header';
+  summary_header.className = 'pre-summary-text';
+  summary_header.innerHTML = 'Summary of comments';
+
+  finalSummary = document.createElement('p');
+  finalSummary.className = 'summary-text';
+  finalSummary.innerHTML = '';
+
+  summaryBoxContent2.appendChild(finalSummary);
+
+  summaryBox2.appendChild(summaryBoxHeader2);
+  summaryBox2.appendChild(summaryBoxContent2);
 
   const navbar = document.createElement('div');
   navbar.classList.add('navbar');
@@ -442,8 +530,6 @@ function createHTML() {
   } else {
     menu.style.background = '#F2F2F2';
   }
-  
-  navbar.appendChild(menu);
 
   const row = document.createElement('div');
   row.className = 'menu-row';
@@ -534,143 +620,12 @@ function createHTML() {
 
   row.appendChild(languageProp);
   row.appendChild(languageSelect);
-
   
-  menu.appendChild(row);
+  menu.appendChild(row);  
+  navbar.appendChild(menu);
 
-
-  // Create the first summary box
-  summaryBox1 = document.createElement('div');
-  summaryBox1.className = 'summary-box';
-  summaryBox1.style.display = "none";
-
-  const summaryBoxHeader1 = document.createElement('div');
-  summaryBoxHeader1.className = 'summary-box__header';
-
-  processingGif.id = "processingPic";
-  processingGif.src = chrome.runtime.getURL("images/processingPic.gif");
-  summaryBoxHeader1.appendChild(processingGif);
-
-  const preprocessingLabel = document.createElement('p');
-  preprocessingLabel.id = 'preprocessingLabel';
-  preprocessingLabel.innerHTML = "Reading " + numberOfComments + " comments";
-  summaryBoxHeader1.appendChild(preprocessingLabel);
-
-  const toggleButton = document.createElement('button');
-  toggleButton.innerHTML = 'Show more';
-  toggleButton.classList.add('summary-header-button');
-
-  let contentExpanded = false;
-  // Toggle the summaryBoxContent1 element when the summaryBox1 element is clicked, unless the toggle button was clicked
-  summaryBox1.addEventListener('click', function (event) {
-    if (event.target !== toggleButton && !contentExpanded) {
-      summaryBoxContent1.classList.toggle('hidden');
-      contentExpanded = true;
-
-      // Update the toggle button text based on the expanded/collapsed state of the box
-      if (summaryBoxContent1.classList.contains('hidden')) {
-        toggleButton.textContent = 'Show more';
-        summaryBox1.classList.remove('expanded');
-      } else {
-        toggleButton.textContent = 'Show less';
-        summaryBox1.classList.add('expanded');
-      }
-    }
-  });
-
-  toggleButton.addEventListener('click', function () {
-    if (summaryBoxContent1.classList.contains('hidden')) {
-      summaryBoxContent1.classList.remove('hidden');
-      contentExpanded = true;
-      summaryBox1.classList.add('expanded');
-      toggleButton.textContent = 'Show less';
-      summaryBox1.appendChild(toggleButton);
-      toggleButton.style.marginLeft = '17px';
-      toggleButton.style.marginBottom = '10px';
-    } else {
-      summaryBoxContent1.classList.add('hidden');
-      contentExpanded = false;
-      summaryBox1.classList.remove('expanded');
-      toggleButton.textContent = 'Show more';
-      summaryBoxHeader1.appendChild(toggleButton);
-      toggleButton.style.marginLeft = '10px';
-      toggleButton.style.marginBottom = '0px';
-    }
-  });
-
-  summaryBoxHeader1.appendChild(toggleButton);
-
-  summaryBoxContent1 = document.createElement('div');
-  summaryBoxContent1.className = 'summary-box__content hidden';
-
-  summaryBox1.appendChild(summaryBoxHeader1);
-  summaryBox1.appendChild(summaryBoxContent1);
-
-  const separator = document.createElement('hr');
-  separator.className = 'main-separator';
-
-  // Create the second summary box
-  summaryBox2 = document.createElement('div');
-  summaryBox2.className = 'summary-box-2';
-
-  const summaryBoxHeader2 = document.createElement('div');
-  summaryBoxHeader2.className = 'summary-box__header';
-  const logoPic = document.createElement("img");
-  logoPic.id = "logoPic";
-  if (isDarkTheme) {
-    logoPic.src = chrome.runtime.getURL("images/dark/title.png");
-  } else {
-    logoPic.src = chrome.runtime.getURL("images/light/title.png");
-  }
-  
   summaryBoxHeader2.appendChild(navbar);
-  summaryBoxHeader2.appendChild(logoPic);
-  
-
-  summaryBoxContent2 = document.createElement('div');
-  summaryBoxContent2.className = 'summary-box__content';
-
-
-  const subgroup_container = document.createElement('div');
-  subgroup_container.className = 'subgroup_container';
-
-  const subgroup_header_container = document.createElement('div');
-  subgroup_header_container.className = 'subgroup_header_container';
-
-  const userProfilePic = document.createElement("img");
-  userProfilePic.src = chrome.runtime.getURL("images/userPic.png");
-
-  const summary_header = document.createElement('p');
-  summary_header.className = 'pre-summary-text';
-  summary_header.innerHTML = 'Summarize all comments';
-
-  subgroup_header_container.appendChild(userProfilePic);
-  subgroup_header_container.appendChild(summary_header);
-
-  const subgroup_summary_n_container = document.createElement('div');
-  subgroup_summary_n_container.className = 'subgroup_summary_n_container';
-
-  const gptProfilePic = document.createElement("img");
-  gptProfilePic.src = chrome.runtime.getURL("images/chatGptPic.png");
-
-  finalSummary = document.createElement('p');
-  finalSummary.className = 'summary-text';
-  finalSummary.innerHTML = '';
-
-  subgroup_summary_n_container.appendChild(gptProfilePic);
-  subgroup_summary_n_container.appendChild(finalSummary);
-
-  subgroup_container.appendChild(subgroup_header_container);
-  subgroup_container.appendChild(subgroup_summary_n_container);
-
-  summaryBoxContent2.appendChild(subgroup_container);
-
-  const end_separator1 = document.createElement('hr');
-  end_separator1.className = 'main-separator';
-  summaryBoxContent2.appendChild(end_separator1);
-
-  summaryBox2.appendChild(summaryBoxHeader2);
-  summaryBox2.appendChild(summaryBoxContent2);
+  summaryBoxHeader2.appendChild(summary_header);
 
   // Add the summary boxes to the page
   container.appendChild(summaryBox1);
