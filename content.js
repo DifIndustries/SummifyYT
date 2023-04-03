@@ -31,7 +31,7 @@ let pageToken;
 let numberOfComments;
 
 async function getComments() {
-  let url = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${videoId}&key=${API_KEY}&maxResults=${MAX_RESULTS}`;
+  let url = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet,replies&videoId=${videoId}&key=${API_KEY}&maxResults=${MAX_RESULTS}`;
   if (pageToken) {
     url += `&pageToken=${pageToken}`;
   }
@@ -49,6 +49,24 @@ async function getComments() {
     console.error(error);
   }
   return data;
+}
+
+async function getReplies(parentId) { 
+  let url = `https://www.googleapis.com/youtube/v3/comments?part=snippet&parentId=${parentId}&key=${API_KEY}&maxResults=${MAX_RESULTS}`;
+  let response = null; 
+  let data = null;
+
+  try { 
+    response = await fetch(url); 
+    data = await response.json(); 
+    if (data.error) { 
+      console.log(data.error.message); 
+    } 
+  } catch (error) {
+    console.error(error); 
+  } 
+  
+  return data; 
 }
 
 async function setNumberOfComments() {
@@ -93,11 +111,27 @@ async function printComments() {
       break;
     }
 
-    all_comments.push(...ytbData.items);
+    for (const comment of ytbData.items) {
+      all_comments.push(comment.snippet.topLevelComment); // Push the top level comment
+
+      if (comment.snippet.totalReplyCount > 5) { // Check if there are more than five replies
+        const repliesData = await getReplies(comment.id); // Call the comments.list method to get all replies
+        
+        for (const reply of repliesData.items) { // Loop through the replies
+          all_comments.push(reply); // Push each reply
+        }
+
+      } else if (comment.replies) { // Check if there are any replies
+        
+        for (const reply of comment.replies.comments) { // Loop through the replies
+          all_comments.push(reply); // Push each reply
+        }
+      }
+      
+    }
 
     if (ytbData.nextPageToken) {
       pageToken = ytbData.nextPageToken;
-      multipleChunk = true;
     } else {
       break;
     }
@@ -107,25 +141,33 @@ async function printComments() {
   all_comments.reverse();
 
   for (const comment of all_comments) {
-    const currentTimestamp = comment.snippet.topLevelComment.snippet.publishedAt;
+    const currentTimestamp = comment.snippet.publishedAt;
 
-    if (comment.snippet.topLevelComment.snippet.textOriginal.length < 1150) {
-      // Check if previousTimestamp is not null and if the current timestamp is less than the previous timestamp
-      if (new Date(currentTimestamp) >= new Date(previousTimestamp)) {
-        comments.push({
-          text: comment.snippet.topLevelComment.snippet.textOriginal,
-          timestamp: comment.snippet.topLevelComment.snippet.publishedAt
-        });
-      }
+    // Check if previousTimestamp is not null and if the current timestamp is less than the previous timestamp
+    if (comment.snippet.parentId !== undefined ||
+      new Date(currentTimestamp) >= new Date(previousTimestamp)) {
+    comments.push({
+        text: comment.snippet.textOriginal,
+        timestamp: comment.snippet.publishedAt
+      });
+    } else {
+      console.log(previousTimestamp);
+      console.log(currentTimestamp);
     }
 
-    previousTimestamp = currentTimestamp;
+    if (comment.snippet.parentId === undefined) {
+      previousTimestamp = currentTimestamp;
+    }
   }
 
   // Concatenate comments into chunks not greater than 13000 characters
   let commentChunks = [];
   let currentChunk = "";
-  let currentChunkTimestamps = { first: null, last: null };
+  let currentChunkTimestamps = {
+    first: null,
+    last: null,
+    count: 0
+  };
   let chunkTimestamps = [];
 
   for (let i = 0; i < comments.length; i++) {
@@ -139,12 +181,14 @@ async function printComments() {
         currentChunkTimestamps.first = timestamp;
       }
       currentChunkTimestamps.last = timestamp;
+      currentChunkTimestamps.count++;
     } else {
       commentChunks.push(currentChunk);
       chunkTimestamps.push({ ...currentChunkTimestamps });
       currentChunk = comment + "\n";
       currentChunkTimestamps.first = null;
       currentChunkTimestamps.last = null;
+      currentChunkTimestamps.count = 1;
     }
   }
 
@@ -159,8 +203,6 @@ async function printComments() {
 
 let content;
 let timestamps;
-
-let multipleChunk = false;
 
 let container;
 let summaryBox1;
@@ -273,7 +315,7 @@ async function start() {
 
   finalSummary.innerHTML = "Please wait while your comments are being processed. This may take a few moments, but it will ensure the best possible results for your summaries.";
 
-  if (multipleChunk === true) {
+  if (content.length > 1) {
     summaryBox1.style.display = "block";
     processNextSummary();
   } else {
