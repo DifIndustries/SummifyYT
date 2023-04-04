@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SummifyYT (Summarize YouTube Comments)",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "SummifyYT is a browser extension that summarizes comments of YouTube videos.",
   "host_permissions": [
     "https://*.openai.com/"
@@ -22,7 +22,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": [ "images/chatGptPic.png", "images/dark/title.png", "images/light/title.png", "images/userPic.png", "images/processingPic.gif", "images/logo64.png" ],
+      "resources": [ "images/*", "icons/*" ],
       "matches": [ "https://*.youtube.com/*", "https://youtu.be/*" ]
     }
   ],

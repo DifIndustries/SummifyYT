@@ -4,12 +4,18 @@ const root = document.documentElement;
 // Define the CSS variables
 const lightTheme = {
   subgroupHeaderBackground: '#FFFFFF',
-  subgroupSummaryBackground: '#F7F7F8'
+  subgroupSummaryBackground: '#F7F7F8',
+  menuRowBackgroundColor: '#fefefe',
+  overlayColor: 'rgba(255, 255, 255, 0.5)',
+  subgroupSummaryShadow: 'rgba(0, 0, 0, 0.1) -2px -2px 8px'
 };
 
 const darkTheme = {
   subgroupHeaderBackground: '#343541',
-  subgroupSummaryBackground: '#444654'
+  subgroupSummaryBackground: '#444654',
+  menuRowBackgroundColor: '#181818',
+  overlayColor: 'rgba(0, 0, 0, 0.5)',
+  subgroupSummaryShadow: 'rgba(255, 255, 255, 0.1) -2px -2px 8px'
 };
 
 // Detect the current theme setting
@@ -19,9 +25,15 @@ const isDarkTheme = root.getAttribute('dark') !== null;
 if (isDarkTheme) {
   root.style.setProperty('--subgroup-header-container-backgroundcolor', darkTheme.subgroupHeaderBackground);
   root.style.setProperty('--subgroup-summary-container-backgroundcolor', darkTheme.subgroupSummaryBackground);
+  root.style.setProperty('--menu-row-backgroundcolor', darkTheme.menuRowBackgroundColor);
+  root.style.setProperty('--overlay-backgroundcolor', darkTheme.overlayColor);
+  root.style.setProperty('--subgroup-summary-shadow', darkTheme.subgroupSummaryShadow);
 } else {
   root.style.setProperty('--subgroup-header-container-backgroundcolor', lightTheme.subgroupHeaderBackground);
   root.style.setProperty('--subgroup-summary-container-backgroundcolor', lightTheme.subgroupSummaryBackground);
+  root.style.setProperty('--menu-row-backgroundcolor', lightTheme.menuRowBackgroundColor);
+  root.style.setProperty('--overlay-backgroundcolor', lightTheme.overlayColor);
+  root.style.setProperty('--subgroup-summary-shadow', lightTheme.subgroupSummaryShadow);
 }
 
 const API_KEY = 'YOUR API KEY';
@@ -271,6 +283,7 @@ async function compose() {
       if (parentDiv) {
 
         parentDiv.appendChild(container);
+        createSvgFilter();
         createHTML();
 
       } else {
@@ -286,7 +299,18 @@ async function compose() {
       container.style.display = "block";
     }
 
-    await checkAuth();
+    // Check the auto-start setting before starting the summarization
+    chrome.storage.local.get(['autoStart'], function (result) {
+      // If autoStart is not found in local storage, the default value will be true
+      const autoStart = result.autoStart ?? true;
+      const startOverlay = document.getElementById('start-overlay');
+      if (startOverlay) {
+        startOverlay.style.display = autoStart ? 'none' : 'block'; // Show the overlay if autoStart is disabled
+      }
+      if (autoStart) {
+        checkAuth();
+      }
+    });
 
   }
 }
@@ -300,7 +324,7 @@ async function waitForLogin() {
   if (checkLoginInterval) {
     clearInterval(checkLoginInterval);
   }
-  checkLoginInterval = setInterval(checkAuth, 5000);
+  checkLoginInterval = setInterval(checkAuth, 4000);
 
   finalSummary.innerHTML =
     'Please login at <a href="https://chat.openai.com" target="_blank">chat.openai.com</a>';
@@ -350,9 +374,9 @@ async function processNextSummary() {
     const summary1 = document.createElement('p');
     summary1.className = 'summary-text';
 
+    subgroup_summary_n_container.appendChild(summary_header);
     subgroup_summary_n_container.appendChild(summary1);
 
-    subgroup_container.appendChild(summary_header);
     subgroup_container.appendChild(subgroup_summary_n_container);
 
     summaryBoxContent1.appendChild(subgroup_container);
@@ -568,9 +592,9 @@ function createHTML() {
   const menu = document.createElement('div');
   menu.classList.add('navbar__menu');
   if (isDarkTheme) {
-    menu.style.background = '#272727';
+    menu.style.background = 'rgba(39, 39, 39, 0.95)';
   } else {
-    menu.style.background = '#F2F2F2';
+    menu.style.background = 'rgba(242, 242, 242, 0.95)';
   }
 
   const row = document.createElement('div');
@@ -583,16 +607,11 @@ function createHTML() {
   const languageLabel = document.createElement('p');
   languageLabel.className = 'language-label';
   languageLabel.textContent = 'Summary language';
-  languageLabel.style.marginLeft = '10px';
-  languageLabel.style.fontSize = '1.5rem';
-  languageLabel.style.fontWeight = 'bold';
   languageProp.appendChild(languageLabel);
 
   const languageDescription = document.createElement('p');
+  languageDescription.className = 'setting-description';
   languageDescription.textContent = 'The summary language is the language that will be used to summarize the comments. When set to \'Default\',  the most common language in the comments will be used.';
-  languageDescription.style.marginLeft = '10px';
-  languageDescription.style.marginTop = '2px';
-  languageDescription.style.width = '300px';
   languageProp.appendChild(languageDescription);
 
   // Create a combobox element for selecting the language
@@ -662,12 +681,80 @@ function createHTML() {
 
   row.appendChild(languageProp);
   row.appendChild(languageSelect);
-  
-  menu.appendChild(row);  
+
+
+  const row_autostart = document.createElement('div');
+  row_autostart.className = 'menu-row';
+  menu.appendChild(row_autostart);
+
+  // Create a toggle button for auto-starting the summary
+  const autoStartToggleContainer = document.createElement('div');
+  const autoStartLabel = document.createElement('p');
+  autoStartLabel.className = 'language-label';
+  autoStartLabel.textContent = 'Auto-start summary';
+  autoStartToggleContainer.appendChild(autoStartLabel);
+
+  const autoStartDescription = document.createElement('p');
+  autoStartDescription.className = 'setting-description';
+  autoStartDescription.textContent = 'Enable this setting to automatically start the summarization process when the page loads.';
+  autoStartToggleContainer.appendChild(autoStartDescription);
+
+  const autoStartToggle = document.createElement('label');
+  autoStartToggle.classList.add('switch');
+
+  const autoStartCheckbox = document.createElement('input');
+  autoStartCheckbox.type = 'checkbox';
+  autoStartToggle.appendChild(autoStartCheckbox);
+
+  const autoStartSlider = document.createElement('span');
+  autoStartSlider.classList.add('slider', 'round');
+  autoStartToggle.appendChild(autoStartSlider);
+
+  // retrieve the saved auto-start option when the extension loads
+  chrome.storage.local.get(['autoStart'], function(result) {
+    // If autoStart is not found in local storage, the default value will be true
+    autoStartCheckbox.checked = result.autoStart ?? true;
+  });
+
+  // save the auto-start option when the user changes it
+  autoStartCheckbox.addEventListener('change', function() {
+    chrome.storage.local.set({ 'autoStart': autoStartCheckbox.checked }, function() {});
+  });
+
+  row_autostart.appendChild(autoStartToggleContainer);
+  row_autostart.appendChild(autoStartToggle);
+
   navbar.appendChild(menu);
 
   summaryBoxHeader2.appendChild(navbar);
   summaryBoxHeader2.appendChild(summary_header);
+
+  // Create a semi-transparent overlay for the summaryBox2
+  const startOverlay = document.createElement('div');
+  startOverlay.id = 'start-overlay';
+  startOverlay.addEventListener('click', function() {
+    checkAuth();
+    this.style.display = 'none'; // Hide the overlay when clicked
+  });
+
+  // Create the app logo
+  const appLogo = document.createElement('img');
+  appLogo.src = chrome.runtime.getURL("images/logo64.png");
+  appLogo.style.position = 'absolute';
+  appLogo.style.top = '35%'; // Move the logo 60px above the vertical center
+  appLogo.style.left = '50%';
+  appLogo.style.transform = 'translate(-50%, -50%)';
+  appLogo.style.filter = 'url(#outlineFilter)';
+
+  // Create a message to indicate this area is clickable
+  const clickMessage = document.createElement('div');
+  clickMessage.id = 'click-message';
+  clickMessage.innerHTML = 'Click to summarize comments';
+
+  startOverlay.appendChild(appLogo);
+  startOverlay.appendChild(clickMessage);
+  summaryBox2.style.position = 'relative';
+  summaryBox2.appendChild(startOverlay);
 
   // Add the summary boxes to the page
   container.appendChild(summaryBox1);
@@ -696,4 +783,48 @@ function getReadableTimestamp(timestamp) {
 
   // Format the timestamp as a string in the desired format
   return `${day} ${month} ${year}, ${hour}:${minute.toString().padStart(2, '0')}`;
+}
+
+function createSvgFilter() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.style.position = 'absolute';
+
+  const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+  filter.setAttribute('id', 'outlineFilter');
+
+  const feMorphology = document.createElementNS('http://www.w3.org/2000/svg', 'feMorphology');
+  feMorphology.setAttribute('in', 'SourceAlpha');
+  feMorphology.setAttribute('operator', 'dilate');
+  feMorphology.setAttribute('radius', '0.5');
+  feMorphology.setAttribute('result', 'dilatedAlpha');
+
+  const feColorMatrix = document.createElementNS('http://www.w3.org/2000/svg', 'feColorMatrix');
+  feColorMatrix.setAttribute('type', 'matrix');
+  feColorMatrix.setAttribute('values', '1 0 0 0 1 0 1 0 0 1 0 0 1 0 1 0 0 0 1 0');
+  feColorMatrix.setAttribute('result', 'mask');
+
+  const feComposite = document.createElementNS('http://www.w3.org/2000/svg', 'feComposite');
+  feComposite.setAttribute('in', 'mask');
+  feComposite.setAttribute('in2', 'SourceGraphic');
+  feComposite.setAttribute('operator', 'in');
+  feComposite.setAttribute('result', 'mask2');
+
+  const feMerge = document.createElementNS('http://www.w3.org/2000/svg', 'feMerge');
+  const feMergeNode1 = document.createElementNS('http://www.w3.org/2000/svg', 'feMergeNode');
+  feMergeNode1.setAttribute('in', 'mask2');
+  const feMergeNode2 = document.createElementNS('http://www.w3.org/2000/svg', 'feMergeNode');
+  feMergeNode2.setAttribute('in', 'SourceGraphic');
+
+  feMerge.appendChild(feMergeNode1);
+  feMerge.appendChild(feMergeNode2);
+
+  filter.appendChild(feMorphology);
+  filter.appendChild(feColorMatrix);
+  filter.appendChild(feComposite);
+  filter.appendChild(feMerge);
+
+  svg.appendChild(filter);
+
+  // Append the created SVG filter to the body element
+  document.body.appendChild(svg);
 }
